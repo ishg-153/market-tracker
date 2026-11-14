@@ -1,0 +1,757 @@
+<title>Market Tracker</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="market-tracker-page" content="0.1.0">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: sticky ledger header with tabs; one column of panels, tables scroll inside their own box. */
+:root {
+  --bg: #F2F4F1;
+  --panel: #FFFFFF;
+  --sunk: #E8ECE7;
+  --line: #D3DAD2;
+  --fg: #17201B;
+  --muted: #56635A;
+  --accent: #0D6A5F;
+  --accent-soft: #DCEFEA;
+  --accent-ink: #FFFFFF;
+  --gain: #1C7A3F;
+  --gain-bg: #E1F2E6;
+  --loss: #B3261E;
+  --loss-bg: #FBE5E2;
+  --warn: #965800;
+  --warn-bg: #FAEED6;
+  --font-ui: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-head: "IBM Plex Sans Condensed", "IBM Plex Sans", system-ui, sans-serif;
+  --font-num: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --r: 8px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0E1311; --panel: #151C19; --sunk: #1C2521; --line: #2B3632; --fg: #E4EBE7; --muted: #9AA9A1;
+    --accent: #52C3B3; --accent-soft: #173A35; --accent-ink: #0B1311;
+    --gain: #63C886; --gain-bg: #16301F; --loss: #F2786E; --loss-bg: #3A1A17; --warn: #E3A542; --warn-bg: #352812;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0E1311; --panel: #151C19; --sunk: #1C2521; --line: #2B3632; --fg: #E4EBE7; --muted: #9AA9A1;
+  --accent: #52C3B3; --accent-soft: #173A35; --accent-ink: #0B1311;
+  --gain: #63C886; --gain-bg: #16301F; --loss: #F2786E; --loss-bg: #3A1A17; --warn: #E3A542; --warn-bg: #352812;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font: 15px/1.5 var(--font-ui); }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--panel); }
+.wrap { max-width: 1080px; margin-inline: auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+header.top { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--panel); border-bottom: 1px solid var(--line); }
+.top .wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; padding-block: 10px 0; }
+.brand { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; min-width: 0; }
+.brand h1 { font: 600 1.35rem/1.2 var(--font-head); margin: 0; letter-spacing: .01em; }
+.status { color: var(--muted); font-size: .82rem; }
+.status b { color: var(--fg); font-weight: 500; }
+nav.tabs { display: flex; gap: 2px; overflow-x: auto; width: 100%; scrollbar-width: none; }
+nav.tabs button { font: 500 .9rem var(--font-ui); background: none; border: 0; color: var(--muted); padding: 10px 12px 9px; border-bottom: 2px solid transparent; cursor: pointer; white-space: nowrap; }
+nav.tabs button[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--accent); }
+nav.tabs button:hover { color: var(--fg); }
+nav.tabs .count { font-family: var(--font-num); font-size: .75rem; color: var(--muted); margin-left: 4px; }
+main { padding-block: 20px 56px; display: grid; gap: 20px; }
+section.view { display: grid; gap: 16px; min-width: 0; }
+section.view > *, #today > * { min-width: 0; }
+#totals { overflow-wrap: anywhere; }
+h2 { font: 600 1.15rem/1.25 var(--font-head); margin: 0; text-wrap: balance; }
+h3 { font: 600 1rem/1.3 var(--font-head); margin: 0; letter-spacing: .01em; }
+.eyebrow { font: 500 .72rem var(--font-ui); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; min-width: 0; }
+.row { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+.spread { justify-content: space-between; }
+.muted { color: var(--muted); }
+.small { font-size: .85rem; }
+.num { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+.gain { color: var(--gain); } .loss { color: var(--loss); }
+p { margin: 0; max-width: 70ch; }
+a { color: var(--accent); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Index strip */
+.ticker { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
+.tick { background: var(--panel); padding: 10px 12px; display: grid; gap: 2px; min-width: 0; }
+.tick .name { font-size: .78rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tick .val { font: 500 1.05rem var(--font-num); }
+.tick .chg { font: .82rem var(--font-num); }
+
+/* Entry */
+.entry { display: grid; gap: 14px; }
+.entry .headline { font-size: 1.05rem; font-weight: 500; max-width: 70ch; }
+.entry-sec { display: grid; gap: 6px; padding-top: 12px; border-top: 1px solid var(--line); }
+.entry-sec ul { margin: 0; padding-left: 1.1em; display: grid; gap: 4px; max-width: 75ch; }
+.entry-sec p + p { margin-top: 6px; }
+.flags { display: grid; gap: 6px; }
+.flag { display: grid; grid-template-columns: 4px 1fr; gap: 10px; background: var(--sunk); border-radius: 6px; overflow: hidden; }
+.flag::before { content: ""; background: var(--muted); }
+.flag[data-sev="high"]::before { background: var(--loss); }
+.flag[data-sev="medium"]::before { background: var(--warn); }
+.flag[data-sev="info"]::before { background: var(--accent); }
+.flag > div { padding: 8px 10px 8px 0; min-width: 0; }
+.flag .tgt { font-weight: 600; margin-right: 6px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 3px 4px 3px 10px; font-size: .85rem; }
+.chip .sym { font-family: var(--font-num); font-size: .78rem; color: var(--muted); }
+.pill { display: inline-block; white-space: nowrap; font: 500 .72rem var(--font-ui); letter-spacing: .04em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; background: var(--sunk); color: var(--muted); }
+.pill.accent { background: var(--accent-soft); color: var(--accent); }
+.pill.warn { background: var(--warn-bg); color: var(--warn); }
+.pill.loss { background: var(--loss-bg); color: var(--loss); }
+.pill.gain { background: var(--gain-bg); color: var(--gain); }
+.sources { font-size: .82rem; color: var(--muted); }
+.sources a { word-break: break-word; }
+.tablebox { overflow-x: auto; border: 1px solid var(--line); border-radius: 6px; }
+table { border-collapse: collapse; width: 100%; font-size: .88rem; }
+th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font: 500 .75rem var(--font-ui); text-transform: uppercase; letter-spacing: .05em; color: var(--muted); background: var(--sunk); white-space: nowrap; }
+td.r, th.r { text-align: right; }
+tr:last-child td { border-bottom: 0; }
+
+/* Buttons and forms */
+button.btn, .btn { font: 500 .85rem var(--font-ui); border: 1px solid var(--line); background: var(--panel); color: var(--fg); padding: 6px 12px; border-radius: 6px; cursor: pointer; }
+.btn:hover { border-color: var(--accent); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn.mini { padding: 2px 8px; font-size: .78rem; border-radius: 999px; }
+.btn.ghost { border-color: transparent; background: transparent; color: var(--muted); }
+.btn.ghost:hover { color: var(--fg); border-color: var(--line); }
+.btn.danger { color: var(--loss); }
+.btn.confirm { background: var(--loss); border-color: var(--loss); color: #fff; }
+.btn[disabled] { opacity: .45; cursor: not-allowed; }
+form.add { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 170px), 1fr)); align-items: end; }
+form.add .wide { grid-column: 1 / -1; }
+label.f { display: grid; gap: 4px; font-size: .8rem; color: var(--muted); }
+input, select, textarea { font: .92rem var(--font-ui); color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px; width: 100%; min-width: 0; }
+textarea { min-height: 3.2em; resize: vertical; }
+details.adder > summary { cursor: pointer; font-weight: 500; color: var(--accent); list-style: none; }
+details.adder > summary::-webkit-details-marker { display: none; }
+details.adder[open] > summary { margin-bottom: 12px; }
+
+/* Lists */
+.cards { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); }
+.card { display: grid; gap: 8px; align-content: start; }
+.card .name { font-weight: 600; }
+.card .actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+.empty { border: 1px dashed var(--line); border-radius: var(--r); padding: 20px; color: var(--muted); display: grid; gap: 6px; }
+.empty b { color: var(--fg); font-weight: 600; }
+.filters { display: flex; gap: 6px; flex-wrap: wrap; }
+.filters button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+details.hist { border-top: 1px solid var(--line); padding-block: 10px; }
+details.hist:first-of-type { border-top: 0; }
+details.hist > summary { cursor: pointer; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; list-style: none; }
+details.hist > summary::-webkit-details-marker { display: none; }
+details.hist > summary .t { font-weight: 500; }
+details.hist[open] > summary { margin-bottom: 12px; }
+.notice { background: var(--warn-bg); color: var(--warn); border-radius: 6px; padding: 8px 12px; font-size: .88rem; }
+.toast { position: fixed; left: 50%; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--fg); color: var(--bg); padding: 8px 14px; border-radius: 6px; font-size: .88rem; max-width: calc(100% - 32px); z-index: 20; }
+@media (prefers-reduced-motion: no-preference) {
+  .toast { animation: rise .2s ease-out; }
+  @keyframes rise { from { opacity: 0; transform: translate(-50%, 6px); } }
+}
+@media (max-width: 560px) {
+  .hide-narrow { display: none; }
+  .top .status { width: 100%; }
+}
+</style>
+
+<header class="top">
+  <div class="wrap">
+    <div class="brand">
+      <h1 id="dash-name">Market Tracker</h1>
+      <span class="status" id="status">Connecting…</span>
+    </div>
+    <nav class="tabs" role="tablist" aria-label="Sections">
+      <button role="tab" id="tab-today" data-view="today" aria-selected="true">Today</button>
+      <button role="tab" id="tab-portfolio" data-view="portfolio" aria-selected="false">Portfolio<span class="count" id="n-portfolio"></span></button>
+      <button role="tab" id="tab-watchlist" data-view="watchlist" aria-selected="false">Watchlist<span class="count" id="n-watchlist"></span></button>
+      <button role="tab" id="tab-history" data-view="history" aria-selected="false">History<span class="count" id="n-history"></span></button>
+      <button role="tab" id="tab-requests" data-view="requests" aria-selected="false">Requests<span class="count" id="n-requests"></span></button>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <div id="readonly" class="notice" hidden>You can read this dashboard but not change it. Ask its owner for Contributor access to add or remove items.</div>
+  <div id="nodb" class="empty" hidden>
+    <b>This page needs to be opened in Claude.</b>
+    <span>Its holdings, watchlist and analysis are stored with the artifact, so they only load inside claude.ai or the Claude app.</span>
+  </div>
+
+  <section class="view" id="view-today" aria-labelledby="tab-today">
+    <div id="today"></div>
+  </section>
+
+  <section class="view" id="view-portfolio" aria-labelledby="tab-portfolio" hidden>
+    <div class="row spread">
+      <h2>Holdings</h2>
+      <span class="small muted" id="totals"></span>
+    </div>
+    <div id="holdings"></div>
+    <details class="adder panel" id="holding-adder">
+      <summary id="holding-adder-title">+ Add a holding</summary>
+      <form class="add" id="holding-form" autocomplete="off">
+        <label class="f">Market<select id="h-market"></select></label>
+        <label class="f">Symbol<input id="h-symbol" required placeholder="TATAPOWER" maxlength="24"></label>
+        <label class="f">Company name<input id="h-name" placeholder="Tata Power" maxlength="80"></label>
+        <label class="f">Quantity<input id="h-qty" type="number" min="0" step="any" required></label>
+        <label class="f">Average buy price<input id="h-avg" type="number" min="0" step="any" required></label>
+        <label class="f">Bought on<input id="h-date" type="date"></label>
+        <label class="f wide">Why you own it (optional, the daily check measures news against this)<textarea id="h-thesis" maxlength="600" placeholder="Capacity expansion in renewables; debt falling"></textarea></label>
+        <div class="row wide"><button class="btn primary" type="submit" id="h-save">Add holding</button><button class="btn ghost" type="button" id="h-cancel">Cancel</button></div>
+      </form>
+    </details>
+    <details class="hist" id="sold-wrap" hidden><summary><span class="t">Sold</span><span class="muted small" id="sold-count"></span></summary><div id="sold"></div></details>
+  </section>
+
+  <section class="view" id="view-watchlist" aria-labelledby="tab-watchlist" hidden>
+    <h2>Watchlist</h2>
+    <details class="adder panel" id="watch-adder">
+      <summary>+ Watch a company or sector</summary>
+      <form class="add" id="watch-form" autocomplete="off">
+        <label class="f">Type<select id="w-kind"><option value="company">Company</option><option value="sector">Sector</option></select></label>
+        <label class="f">Market<select id="w-market"></select></label>
+        <label class="f">Name<input id="w-name" required placeholder="Tata Power or Defence" maxlength="80"></label>
+        <label class="f" id="w-symbol-wrap">Symbol (if you know it)<input id="w-symbol" placeholder="TATAPOWER" maxlength="24"></label>
+        <label class="f wide">Why it caught your eye (optional)<textarea id="w-reason" maxlength="400"></textarea></label>
+        <div class="row wide"><button class="btn primary" type="submit">Start watching</button><span class="small muted">The next scheduled run fills in the symbol if it is missing and adds it to the brief.</span></div>
+      </form>
+    </details>
+    <div id="watchlist"></div>
+    <details class="hist" id="removed-wrap" hidden><summary><span class="t">Stopped watching</span><span class="muted small" id="removed-count"></span></summary><div id="removed"></div></details>
+  </section>
+
+  <section class="view" id="view-history" aria-labelledby="tab-history" hidden>
+    <div class="row spread">
+      <h2>All analysis</h2>
+      <input id="hist-q" type="search" placeholder="Search briefs" aria-label="Search briefs" style="max-width: 240px">
+    </div>
+    <div class="filters" id="hist-filters"></div>
+    <div class="panel" id="history"></div>
+  </section>
+
+  <section class="view" id="view-requests" aria-labelledby="tab-requests" hidden>
+    <h2>Requests for Claude</h2>
+    <p class="muted small">Deep dives and valuations you ask for here are picked up by the next scheduled run, one or two per run.</p>
+    <details class="adder panel" id="req-adder">
+      <summary>+ New request</summary>
+      <form class="add" id="req-form" autocomplete="off">
+        <label class="f">What<select id="r-kind"><option value="deep-dive">Deep dive</option><option value="valuation">Valuation</option><option value="question">Question</option></select></label>
+        <label class="f">Market<select id="r-market"></select></label>
+        <label class="f">Company or sector<input id="r-target" required maxlength="80"></label>
+        <label class="f wide">Anything specific? (optional)<textarea id="r-note" maxlength="600" placeholder="Focus on the last four concalls and capex guidance"></textarea></label>
+        <div class="row wide"><button class="btn primary" type="submit">Send to next run</button></div>
+      </form>
+    </details>
+    <div id="requests"></div>
+  </section>
+</main>
+<div id="toast-slot" aria-live="polite"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---------- constants ----------
+  const MARKETS = {
+    IN: { label: "India", currency: "INR", locale: "en-IN", tz: "Asia/Kolkata" },
+    US: { label: "US", currency: "USD", locale: "en-US", tz: "America/New_York" },
+  };
+  const KIND_LABEL = {
+    morning: "Morning brief", evening: "Evening wrap", "deep-dive": "Deep dive", valuation: "Valuation",
+    "first-look": "First look", "portfolio-review": "Portfolio review", alert: "Alert", answer: "Answer",
+  };
+  const S = { db: null, user: null, canWrite: true, config: null, holdings: [], watchlist: [], requests: [], entries: [],
+    loaded: { config: false, holdings: false, watchlist: false, requests: false, entries: false },
+    histKind: "all", histQ: "", editing: null };
+
+  // ---------- helpers ----------
+  function h(tag, attrs) {
+    const el = document.createElement(tag);
+    if (attrs) for (const k in attrs) {
+      const v = attrs[k];
+      if (v == null || v === false) continue;
+      if (k === "class") el.className = v;
+      else if (k === "text") el.textContent = v;
+      else if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
+      else el.setAttribute(k, v === true ? "" : String(v));
+    }
+    for (let i = 2; i < arguments.length; i++) {
+      const c = arguments[i];
+      if (c == null || c === false) continue;
+      if (Array.isArray(c)) c.forEach((x) => x != null && el.append(x));
+      else el.append(c);
+    }
+    return el;
+  }
+  const $ = (id) => document.getElementById(id);
+  const str = (v) => (v == null ? "" : String(v));
+  const nowIso = () => new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+  function mkt(code) {
+    const extra = S.config && S.config.marketMeta && S.config.marketMeta[code];
+    return extra || MARKETS[code] || { label: str(code) || "Other", currency: "USD", locale: "en-US", tz: "UTC" };
+  }
+  function homeMarket() { return (S.config && S.config.homeMarket) || "IN"; }
+  function marketCodes() {
+    const set = new Set(Object.keys(MARKETS));
+    (S.config && S.config.markets || []).forEach((m) => set.add(m));
+    if (S.config && S.config.marketMeta) Object.keys(S.config.marketMeta).forEach((m) => set.add(m));
+    return Array.from(set);
+  }
+  function tz() { return (S.config && S.config.timezone) || mkt(homeMarket()).tz || undefined; }
+  function fmtTime(iso) {
+    if (!iso) return "";
+    const d = new Date(iso);
+    if (isNaN(d)) return str(iso);
+    try {
+      return new Intl.DateTimeFormat(mkt(homeMarket()).locale, { timeZone: tz(), day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }).format(d);
+    } catch (e) { return d.toLocaleString(); }
+  }
+  function fmtDay(iso) {
+    if (!iso) return "";
+    const d = new Date(iso);
+    if (isNaN(d)) return str(iso);
+    try { return new Intl.DateTimeFormat(mkt(homeMarket()).locale, { timeZone: tz(), weekday: "short", day: "numeric", month: "short", year: "numeric" }).format(d); }
+    catch (e) { return d.toDateString(); }
+  }
+  function ago(iso) {
+    const t = Date.parse(iso);
+    if (isNaN(t)) return "";
+    const m = Math.round((Date.now() - t) / 60000);
+    if (m < 1) return "just now";
+    if (m < 60) return m + " min ago";
+    const hrs = Math.round(m / 60);
+    if (hrs < 36) return hrs + " h ago";
+    return Math.round(hrs / 24) + " days ago";
+  }
+  function money(n, code, compact) {
+    if (typeof n !== "number" || !isFinite(n)) return "—";
+    const m = mkt(code);
+    if (compact && m.currency === "INR" && Math.abs(n) >= 1e5) {
+      const sym = "₹";
+      if (Math.abs(n) >= 1e7) return sym + (n / 1e7).toLocaleString("en-IN", { maximumFractionDigits: 2 }) + " Cr";
+      return sym + (n / 1e5).toLocaleString("en-IN", { maximumFractionDigits: 2 }) + " L";
+    }
+    try {
+      return new Intl.NumberFormat(m.locale, { style: "currency", currency: m.currency, maximumFractionDigits: 2, notation: compact && Math.abs(n) >= 1e6 ? "compact" : "standard" }).format(n);
+    } catch (e) { return n.toFixed(2); }
+  }
+  function numf(n, code, digits) {
+    if (typeof n !== "number" || !isFinite(n)) return "—";
+    return n.toLocaleString(mkt(code).locale, { maximumFractionDigits: digits == null ? 2 : digits });
+  }
+  function pct(n) {
+    if (typeof n !== "number" || !isFinite(n)) return "—";
+    return (n > 0 ? "+" : n < 0 ? "−" : "") + Math.abs(n).toFixed(2) + "%";
+  }
+  function signClass(n) { return typeof n === "number" ? (n > 0 ? "gain" : n < 0 ? "loss" : "") : ""; }
+  function safeId(s) { return str(s).toUpperCase().replace(/&/g, "AND").replace(/[^A-Z0-9_\-.~:@+]/g, "_").replace(/_+/g, "_").slice(0, 120) || "X"; }
+  function slug(s) { return str(s).toLowerCase().replace(/&/g, "and").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 80) || "x"; }
+  function safeUrl(u) { try { const x = new URL(u); return x.protocol === "https:" || x.protocol === "http:" ? x.href : null; } catch (e) { return null; } }
+
+  function toast(msg) {
+    const slot = $("toast-slot");
+    slot.replaceChildren(h("div", { class: "toast", role: "status", text: msg }));
+    clearTimeout(toast._t);
+    toast._t = setTimeout(() => slot.replaceChildren(), 3200);
+  }
+  function errMsg(e) {
+    const code = e && e.code;
+    if (code === "invalid_argument") return "That change wasn't allowed. You may only have view access.";
+    if (code === "quota_exceeded") return "The dashboard's storage is full. Ask Claude to archive old briefs.";
+    if (code === "resource_exhausted") return "Too many changes at once. Wait a moment and try again.";
+    return "Couldn't save that change. Check your connection and try again.";
+  }
+  async function write(fn, okMsg) {
+    if (!S.db) { toast("Open this page in Claude to make changes."); return false; }
+    try { await fn(); if (okMsg) toast(okMsg); return true; }
+    catch (e) {
+      if (e && e.code === "unavailable") {
+        await new Promise((r) => setTimeout(r, 400 + Math.random() * 600));
+        try { await fn(); if (okMsg) toast(okMsg); return true; } catch (e2) { toast(errMsg(e2)); return false; }
+      }
+      toast(errMsg(e)); return false;
+    }
+  }
+  // Two-click confirm without dialogs.
+  function confirmBtn(label, confirmLabel, onConfirm, cls) {
+    const b = h("button", { class: "btn mini " + (cls || "ghost danger"), type: "button", text: label });
+    let armed = false, t;
+    b.addEventListener("click", () => {
+      if (!armed) { armed = true; b.textContent = confirmLabel; b.classList.add("confirm"); t = setTimeout(() => { armed = false; b.textContent = label; b.classList.remove("confirm"); }, 4000); return; }
+      clearTimeout(t); onConfirm();
+    });
+    if (!S.canWrite) b.disabled = true;
+    return b;
+  }
+
+  // ---------- data actions ----------
+  function watched(name, symbol, market) {
+    const sym = str(symbol).toUpperCase();
+    return S.watchlist.find((w) => w.status !== "removed" && w.market === market &&
+      ((sym && str(w.symbol).toUpperCase() === sym) || str(w.name).toLowerCase() === str(name).toLowerCase()));
+  }
+  function held(symbol, market) {
+    const sym = str(symbol).toUpperCase();
+    return sym && S.holdings.find((x) => x.status !== "sold" && x.market === market && str(x.symbol).toUpperCase() === sym);
+  }
+  async function addWatch(item) {
+    const kind = item.kind === "sector" ? "sector" : "company";
+    const market = item.market || homeMarket();
+    const id = kind === "sector" ? market + "-sector-" + slug(item.name) : market + "-" + safeId(item.symbol || slug(item.name));
+    const existing = S.watchlist.find((w) => w._id === id);
+    const body = { kind, market, name: str(item.name).trim(), symbol: item.symbol ? str(item.symbol).toUpperCase().trim() : null,
+      reason: str(item.reason).trim() || null, status: "active", source: "page", addedAt: nowIso(), removedAt: null,
+      needsResolve: kind === "company" && !item.symbol };
+    return write(() => existing ? S.db.collection("watchlist").doc(id).update({ status: "active", removedAt: null, reason: body.reason || existing.reason || null })
+      : S.db.collection("watchlist").doc(id).set(body), "Watching " + body.name);
+  }
+  async function addRequest(item) {
+    const body = { kind: item.kind, target: str(item.target).trim(), symbol: item.symbol ? str(item.symbol).toUpperCase() : null,
+      market: item.market || homeMarket(), note: str(item.note).trim() || null, status: "open", source: "page", createdAt: nowIso() };
+    return write(() => S.db.collection("requests").add(body), (KIND_LABEL[item.kind] || "Request") + " queued for the next run");
+  }
+
+  // ---------- rendering: entries ----------
+  function renderText(text) {
+    // Plain text: blank line = new paragraph, lines starting with "- " = bullets. Never parsed as HTML.
+    const out = [];
+    const blocks = str(text).split(/\n\s*\n/);
+    for (const b of blocks) {
+      const lines = b.split("\n").filter((l) => l.trim());
+      if (!lines.length) continue;
+      if (lines.every((l) => /^\s*[-•*]\s+/.test(l))) out.push(h("ul", null, lines.map((l) => h("li", { text: l.replace(/^\s*[-•*]\s+/, "") }))));
+      else out.push(h("p", { text: lines.join(" ") }));
+    }
+    return out;
+  }
+  function renderTable(t) {
+    if (!t || !Array.isArray(t.columns) || !Array.isArray(t.rows)) return null;
+    const numericCol = t.columns.map((_, i) => t.rows.length && t.rows.every((r) => typeof (r || [])[i] === "number"));
+    return h("div", { class: "tablebox" }, h("table", null,
+      t.caption ? h("caption", { class: "small muted", text: t.caption, style: "caption-side: bottom; padding: 6px 10px; text-align: left" }) : null,
+      h("thead", null, h("tr", null, t.columns.map((c, i) => h("th", { class: numericCol[i] ? "r" : null, text: str(c) })))),
+      h("tbody", null, t.rows.map((r) => h("tr", null, (r || []).map((c, i) => h("td", { class: numericCol[i] ? "r num" : null, text: typeof c === "number" ? numf(c, homeMarket()) : str(c) })))))));
+  }
+  function renderTicker(snap) {
+    const idx = snap && Array.isArray(snap.indices) ? snap.indices : [];
+    if (!idx.length) return null;
+    return h("div", { class: "ticker" }, idx.map((x) => h("div", { class: "tick" },
+      h("span", { class: "name", text: str(x.name), title: str(x.name) }),
+      h("span", { class: "val", text: typeof x.value === "number" ? numf(x.value, x.market || homeMarket()) : str(x.value || "—") }),
+      h("span", { class: "chg " + signClass(x.changePct), text: pct(x.changePct) + (x.note ? " · " + x.note : "") }))));
+  }
+  function mentionChip(m) {
+    const market = m.market || homeMarket();
+    const isWatched = watched(m.name, m.symbol, market);
+    const isHeld = held(m.symbol, market);
+    return h("span", { class: "chip" },
+      h("span", { text: str(m.name) }),
+      m.symbol ? h("span", { class: "sym", text: str(m.symbol) }) : null,
+      isHeld ? h("span", { class: "pill gain", text: "Held" })
+        : isWatched ? h("span", { class: "pill accent", text: "Watching" })
+        : h("button", { class: "btn mini", type: "button", disabled: !S.canWrite, text: "Watch",
+            onclick: () => addWatch({ kind: m.kind === "sector" ? "sector" : "company", name: m.name, symbol: m.symbol, market, reason: "Added from a brief" }) }),
+      h("button", { class: "btn mini ghost", type: "button", disabled: !S.canWrite, text: "Deep dive",
+        onclick: () => addRequest({ kind: "deep-dive", target: m.name, symbol: m.symbol, market }) }));
+  }
+  function renderEntry(e, opts) {
+    opts = opts || {};
+    const parts = [];
+    if (!opts.compactHead) {
+      parts.push(h("div", { class: "row spread" },
+        h("div", { style: "display:grid; gap:2px; min-width:0" },
+          h("span", { class: "eyebrow", text: (KIND_LABEL[e.kind] || str(e.kind)) + " · " + fmtTime(e.createdAt) }),
+          h("h2", { text: str(e.title) || KIND_LABEL[e.kind] || "Analysis" })),
+        e.market ? h("span", { class: "pill", text: mkt(e.market).label }) : null));
+    }
+    if (e.headline) parts.push(h("p", { class: "headline", text: str(e.headline) }));
+    const t = renderTicker(e.snapshot);
+    if (t) parts.push(t);
+    if (e.snapshot && Array.isArray(e.snapshot.notes) && e.snapshot.notes.length)
+      parts.push(h("ul", { class: "small muted", style: "margin:0; padding-left:1.1em" }, e.snapshot.notes.map((n) => h("li", { text: str(n) }))));
+    const flags = Array.isArray(e.flags) ? e.flags : [];
+    if (flags.length) {
+      const order = { high: 0, medium: 1, info: 2 };
+      parts.push(h("div", { class: "flags" }, flags.slice().sort((a, b) => (order[a.severity] ?? 3) - (order[b.severity] ?? 3)).map((f) =>
+        h("div", { class: "flag", "data-sev": str(f.severity) }, h("div", null, f.target ? h("span", { class: "tgt", text: str(f.target) }) : null, h("span", { text: str(f.text) }))))));
+    }
+    (Array.isArray(e.sections) ? e.sections : []).forEach((s) => {
+      parts.push(h("div", { class: "entry-sec" },
+        s.heading ? h("h3", { text: str(s.heading) }) : null,
+        s.body ? renderText(s.body) : null,
+        Array.isArray(s.items) && s.items.length ? h("ul", null, s.items.map((it) => h("li", { text: str(it) }))) : null,
+        s.table ? renderTable(s.table) : null));
+    });
+    const mentions = Array.isArray(e.mentions) ? e.mentions : [];
+    if (mentions.length) parts.push(h("div", { class: "entry-sec" }, h("span", { class: "eyebrow", text: "Mentioned" }), h("div", { class: "chips" }, mentions.map(mentionChip))));
+    const srcs = (Array.isArray(e.sources) ? e.sources : []).map((s) => ({ title: str(s.title) || str(s.url), url: safeUrl(s.url) })).filter((s) => s.url);
+    if (srcs.length) parts.push(h("div", { class: "sources" }, "Sources: ", srcs.map((s, i) => [i ? " · " : "", h("a", { href: s.url, target: "_blank", rel: "noopener noreferrer", text: s.title })]).flat()));
+    return h("article", { class: "entry", id: opts.anchor ? "e-" + e._id : null }, parts);
+  }
+
+  // ---------- views ----------
+  function renderStatus() {
+    const st = $("status");
+    if (S.config && S.config.name) $("dash-name").textContent = S.config.name;
+    if (!S.db) { st.textContent = "Not connected"; return; }
+    const latest = S.entries.find((e) => e.kind === "morning" || e.kind === "evening") || S.entries[0];
+    if (!latest) { st.textContent = S.loaded.entries ? "No runs yet" : "Loading…"; return; }
+    st.replaceChildren("Last run ", h("b", { text: fmtTime(latest.createdAt) }), " · " + ago(latest.createdAt));
+    if (S.config && S.config.name) $("dash-name").textContent = S.config.name;
+  }
+  function renderToday() {
+    const box = $("today");
+    if (!S.db) { box.replaceChildren(); return; }
+    if (!S.loaded.entries) { box.replaceChildren(h("div", { class: "panel muted", text: "Loading the latest brief…" })); return; }
+    const latest = S.entries.find((e) => e.kind === "morning" || e.kind === "evening");
+    const out = [];
+    if (!S.config && S.loaded.config) out.push(h("div", { class: "empty" }, h("b", { text: "Not set up yet" }),
+      h("span", { text: "In a Claude chat with the market-tracker plugin, say “set up my market tracker”. Claude asks for your market and holdings, then fills this page." })));
+    if (latest) out.push(h("div", { class: "panel" }, renderEntry(latest)));
+    else if (S.config) out.push(h("div", { class: "empty" }, h("b", { text: "No brief yet" }),
+      h("span", { text: "The first brief appears here after the next scheduled run. You can add holdings and a watchlist now so it covers them." })));
+    const extra = S.entries.filter((e) => e !== latest && Date.parse(e.createdAt) > Date.now() - 36 * 3600e3 && e.kind !== "morning" && e.kind !== "evening");
+    if (extra.length) {
+      out.push(h("h2", { text: "Also new" }));
+      extra.forEach((e) => out.push(h("details", { class: "panel hist" },
+        h("summary", null, h("span", { class: "pill accent", text: KIND_LABEL[e.kind] || e.kind }), h("span", { class: "t", text: str(e.title) }), h("span", { class: "muted small", text: fmtTime(e.createdAt) })),
+        renderEntry(e, { compactHead: true }))));
+    }
+    const openReq = S.requests.filter((r) => r.status === "open").length;
+    if (openReq) out.push(h("p", { class: "small muted", text: openReq + (openReq === 1 ? " request is" : " requests are") + " waiting for the next run." }));
+    box.replaceChildren(...out);
+  }
+
+  function holdingRow(x) {
+    const val = typeof x.lastPrice === "number" && typeof x.qty === "number" ? x.lastPrice * x.qty : null;
+    const cost = typeof x.avgPrice === "number" && typeof x.qty === "number" ? x.avgPrice * x.qty : null;
+    const pl = val != null && cost ? (val - cost) / cost * 100 : null;
+    const flagCount = (x.openFlags || []).length;
+    return h("tr", null,
+      h("td", null, h("div", { style: "font-weight:600", text: str(x.name || x.symbol) }), h("div", { class: "num small muted", text: str(x.symbol) + " · " + mkt(x.market).label }),
+        x.thesis ? h("div", { class: "small muted hide-narrow", text: str(x.thesis), style: "max-width:40ch" }) : null),
+      h("td", { class: "r num", text: numf(x.qty, x.market, 4) }),
+      h("td", { class: "r num", text: money(x.avgPrice, x.market) }),
+      h("td", { class: "r num" }, h("div", { text: money(x.lastPrice, x.market) }), x.lastPriceAt ? h("div", { class: "small muted", text: ago(x.lastPriceAt) }) : null),
+      h("td", { class: "r num hide-narrow", text: money(val, x.market, true) }),
+      h("td", { class: "r num " + signClass(pl), text: pct(pl) }),
+      h("td", null, flagCount ? h("span", { class: "pill " + (x.openFlags.some((f) => f.severity === "high") ? "loss" : "warn"), text: flagCount + " flag" + (flagCount > 1 ? "s" : ""), title: x.openFlags.map((f) => f.text).join("\n") }) : h("span", { class: "muted small", text: x.lastCheckedAt ? "OK" : "—" })),
+      h("td", null, h("div", { class: "row", style: "gap:4px; flex-wrap:nowrap" },
+        h("button", { class: "btn mini ghost", type: "button", disabled: !S.canWrite, text: "Edit", onclick: () => startEdit(x) }),
+        confirmBtn("Sold", "Mark sold?", () => write(() => S.db.collection("holdings").doc(x._id).update({ status: "sold", soldAt: nowIso(), updatedAt: nowIso(), updatedBy: "page" }), "Marked " + (x.name || x.symbol) + " as sold"), "ghost"))));
+  }
+  function renderPortfolio() {
+    const open = S.holdings.filter((x) => x.status !== "sold");
+    const sold = S.holdings.filter((x) => x.status === "sold");
+    $("n-portfolio").textContent = open.length ? String(open.length) : "";
+    const box = $("holdings");
+    if (!S.loaded.holdings) { box.replaceChildren(h("div", { class: "panel muted", text: "Loading holdings…" })); }
+    else if (!open.length) box.replaceChildren(h("div", { class: "empty" }, h("b", { text: "No holdings yet" }), h("span", { text: "Add what you own below, or ask Claude to import your broker's holdings export. The daily brief checks each one for news and red flags." })));
+    else box.replaceChildren(h("div", { class: "tablebox" }, h("table", null,
+      h("thead", null, h("tr", null, h("th", { text: "Holding" }), h("th", { class: "r", text: "Qty" }), h("th", { class: "r", text: "Avg cost" }), h("th", { class: "r", text: "Last" }), h("th", { class: "r hide-narrow", text: "Value" }), h("th", { class: "r", text: "P&L" }), h("th", { text: "Check" }), h("th", { text: "" }))),
+      h("tbody", null, open.sort((a, b) => str(a.name || a.symbol).localeCompare(str(b.name || b.symbol))).map(holdingRow)))));
+    // Totals by currency (never mixed).
+    const totals = {};
+    open.forEach((x) => {
+      if (typeof x.qty !== "number") return;
+      const c = mkt(x.market).currency;
+      const t = totals[c] || (totals[c] = { cost: 0, val: 0, priced: 0, n: 0, market: x.market });
+      t.n++;
+      if (typeof x.avgPrice === "number") t.cost += x.avgPrice * x.qty;
+      if (typeof x.lastPrice === "number") { t.val += x.lastPrice * x.qty; t.priced++; }
+    });
+    $("totals").replaceChildren(...Object.values(totals).map((t, i) => {
+      const pl = t.priced === t.n && t.cost ? (t.val - t.cost) / t.cost * 100 : null;
+      return h("span", null, i ? " · " : "", "Invested ", h("span", { class: "num", text: money(t.cost, t.market, true) }),
+        t.priced === t.n ? [" · now ", h("span", { class: "num", text: money(t.val, t.market, true) }), " ", h("span", { class: "num " + signClass(pl), text: pct(pl) })] : null);
+    }));
+    $("sold-wrap").hidden = !sold.length;
+    $("sold-count").textContent = sold.length ? String(sold.length) : "";
+    $("sold").replaceChildren(...sold.map((x) => h("div", { class: "row spread small", style: "padding:6px 0" },
+      h("span", null, h("b", { text: str(x.name || x.symbol) }), " ", h("span", { class: "muted num", text: str(x.symbol) + (x.soldAt ? " · sold " + fmtDay(x.soldAt) : "") })),
+      h("span", { class: "row", style: "gap:4px" },
+        h("button", { class: "btn mini ghost", type: "button", disabled: !S.canWrite, text: "Undo", onclick: () => write(() => S.db.collection("holdings").doc(x._id).update({ status: "open", soldAt: null, updatedAt: nowIso(), updatedBy: "page" }), "Moved back to holdings") }),
+        confirmBtn("Delete", "Delete for good?", () => write(() => S.db.collection("holdings").doc(x._id).delete(), "Deleted"))))));
+  }
+  function startEdit(x) {
+    S.editing = x._id;
+    $("h-market").value = x.market || homeMarket();
+    $("h-symbol").value = str(x.symbol); $("h-symbol").disabled = true; $("h-market").disabled = true;
+    $("h-name").value = str(x.name); $("h-qty").value = x.qty ?? ""; $("h-avg").value = x.avgPrice ?? "";
+    $("h-date").value = str(x.buyDate); $("h-thesis").value = str(x.thesis);
+    $("h-save").textContent = "Save changes"; $("holding-adder-title").textContent = "Edit " + (x.name || x.symbol);
+    $("holding-adder").open = true; $("holding-adder").scrollIntoView({ block: "nearest" }); $("h-qty").focus();
+  }
+  function resetHoldingForm() {
+    S.editing = null; $("holding-form").reset(); $("h-symbol").disabled = false; $("h-market").disabled = false;
+    $("h-market").value = homeMarket(); $("h-save").textContent = "Add holding"; $("holding-adder-title").textContent = "+ Add a holding";
+  }
+
+  function watchCard(w) {
+    const removed = w.status === "removed";
+    return h("div", { class: "panel card" },
+      h("div", { class: "row spread" },
+        h("div", { style: "min-width:0" }, h("div", { class: "name", text: str(w.name) }),
+          h("div", { class: "small muted num", text: [w.symbol, mkt(w.market).label].filter(Boolean).join(" · ") })),
+        h("span", { class: "pill " + (w.kind === "sector" ? "warn" : "accent"), text: w.kind === "sector" ? "Sector" : "Company" })),
+      w.reason ? h("p", { class: "small", text: "Why: " + str(w.reason) }) : null,
+      w.lastSummary ? h("p", { class: "small muted", text: str(w.lastSummary) }) : h("p", { class: "small muted", text: removed ? "" : "Covered from the next scheduled run." }),
+      w.kind === "sector" && Array.isArray(w.constituents) && w.constituents.length ? h("p", { class: "small muted num", text: w.constituents.join(", ") }) : null,
+      h("div", { class: "row spread" },
+        h("span", { class: "small muted", text: w.lastCheckedAt ? "Checked " + ago(w.lastCheckedAt) : (w.addedAt ? "Added " + fmtDay(w.addedAt) : "") }),
+        h("div", { class: "actions" },
+          removed ? h("button", { class: "btn mini", type: "button", disabled: !S.canWrite, text: "Watch again", onclick: () => write(() => S.db.collection("watchlist").doc(w._id).update({ status: "active", removedAt: null }), "Watching " + w.name) })
+            : [h("button", { class: "btn mini ghost", type: "button", disabled: !S.canWrite, text: "Deep dive", onclick: () => addRequest({ kind: "deep-dive", target: w.name, symbol: w.symbol, market: w.market }) }),
+               confirmBtn("✕ Stop", "Stop watching?", () => write(() => S.db.collection("watchlist").doc(w._id).update({ status: "removed", removedAt: nowIso() }), "Stopped watching " + w.name))])));
+  }
+  function renderWatchlist() {
+    const active = S.watchlist.filter((w) => w.status !== "removed").sort((a, b) => str(b.addedAt).localeCompare(str(a.addedAt)));
+    const removed = S.watchlist.filter((w) => w.status === "removed");
+    $("n-watchlist").textContent = active.length ? String(active.length) : "";
+    const box = $("watchlist");
+    if (!S.loaded.watchlist) box.replaceChildren(h("div", { class: "panel muted", text: "Loading watchlist…" }));
+    else if (!active.length) box.replaceChildren(h("div", { class: "empty" }, h("b", { text: "Nothing on the watchlist" }), h("span", { text: "Add a company or sector above, or tap Watch next to any company a brief mentions." })));
+    else box.replaceChildren(h("div", { class: "cards" }, active.map(watchCard)));
+    $("removed-wrap").hidden = !removed.length;
+    $("removed-count").textContent = removed.length ? String(removed.length) : "";
+    $("removed").replaceChildren(h("div", { class: "cards" }, removed.map(watchCard)));
+  }
+
+  function renderHistory() {
+    $("n-history").textContent = S.entries.length ? String(S.entries.length) : "";
+    const kinds = ["all"].concat(Array.from(new Set(S.entries.map((e) => e.kind))));
+    $("hist-filters").replaceChildren(...kinds.map((k) => h("button", { class: "btn mini", type: "button", "aria-pressed": String(S.histKind === k), text: k === "all" ? "All" : (KIND_LABEL[k] || k), onclick: () => { S.histKind = k; renderHistory(); } })));
+    const q = S.histQ.trim().toLowerCase();
+    const list = S.entries.filter((e) => (S.histKind === "all" || e.kind === S.histKind) &&
+      (!q || JSON.stringify([e.title, e.headline, e.sections, e.flags, e.mentions]).toLowerCase().includes(q)));
+    const box = $("history");
+    if (!S.loaded.entries) { box.replaceChildren(h("span", { class: "muted", text: "Loading…" })); return; }
+    if (!list.length) { box.replaceChildren(h("span", { class: "muted", text: S.entries.length ? "Nothing matches." : "Briefs and deep dives collect here after each run." })); return; }
+    const out = [];
+    let lastDay = "";
+    list.forEach((e) => {
+      const day = fmtDay(e.createdAt);
+      if (day !== lastDay) { out.push(h("div", { class: "eyebrow", style: "padding-top:10px", text: day })); lastDay = day; }
+      const flagsHigh = (e.flags || []).filter((f) => f.severity === "high").length;
+      out.push(h("details", { class: "hist", id: "e-" + e._id },
+        h("summary", null, h("span", { class: "pill accent", text: KIND_LABEL[e.kind] || str(e.kind) }), h("span", { class: "t", text: str(e.title) }),
+          flagsHigh ? h("span", { class: "pill loss", text: flagsHigh + " high" }) : null,
+          h("span", { class: "muted small", text: fmtTime(e.createdAt) })),
+        renderEntry(e, { compactHead: true })));
+    });
+    box.replaceChildren(...out);
+  }
+
+  function renderRequests() {
+    const open = S.requests.filter((r) => r.status === "open");
+    $("n-requests").textContent = open.length ? String(open.length) : "";
+    const box = $("requests");
+    if (!S.loaded.requests) { box.replaceChildren(h("div", { class: "panel muted", text: "Loading…" })); return; }
+    if (!S.requests.length) { box.replaceChildren(h("div", { class: "empty" }, h("b", { text: "No requests" }), h("span", { text: "Ask for a deep dive or valuation here, or from the Deep dive button on any company." }))); return; }
+    box.replaceChildren(h("div", { class: "panel" }, S.requests.map((r) => h("div", { class: "row spread", style: "padding:8px 0; border-bottom:1px solid var(--line)" },
+      h("div", { style: "min-width:0; display:grid; gap:2px" },
+        h("div", null, h("span", { class: "pill " + (r.status === "open" ? "warn" : r.status === "done" ? "gain" : ""), text: r.status === "open" ? "Waiting" : r.status === "done" ? "Done" : "Cancelled" }), " ",
+          h("b", { text: (KIND_LABEL[r.kind] || r.kind) + ": " + str(r.target) }), r.symbol ? h("span", { class: "muted num small", text: " " + r.symbol }) : null),
+        r.note ? h("span", { class: "small muted", text: str(r.note) }) : null,
+        h("span", { class: "small muted", text: "Asked " + fmtTime(r.createdAt) + (r.doneAt ? " · done " + fmtTime(r.doneAt) : "") + (r.result ? " · " + r.result : "") })),
+      h("div", { class: "row", style: "gap:4px" },
+        r.status === "done" && r.entryId ? h("button", { class: "btn mini", type: "button", text: "Read", onclick: () => openEntry(r.entryId) }) : null,
+        r.status === "open" ? confirmBtn("Cancel", "Cancel it?", () => write(() => S.db.collection("requests").doc(r._id).update({ status: "cancelled", doneAt: nowIso() }), "Cancelled")) : null)))));
+  }
+  function openEntry(id) {
+    show("history");
+    S.histKind = "all"; S.histQ = ""; $("hist-q").value = ""; renderHistory();
+    const el = document.getElementById("e-" + id);
+    if (el) { el.open = true; el.scrollIntoView({ block: "start" }); }
+    else toast("That analysis isn't loaded on this page yet.");
+  }
+
+  function fillMarketSelects() {
+    const codes = marketCodes();
+    ["h-market", "w-market", "r-market"].forEach((id) => {
+      const sel = $(id); const cur = sel.value;
+      sel.replaceChildren(...codes.map((c) => new Option(mkt(c).label, c)));
+      sel.value = codes.includes(cur) ? cur : homeMarket();
+    });
+  }
+  function renderAll() {
+    renderStatus(); renderToday(); renderPortfolio(); renderWatchlist(); renderHistory(); renderRequests();
+    $("readonly").hidden = S.canWrite || !S.db;
+    document.querySelectorAll("form.add button[type=submit]").forEach((b) => { b.disabled = !S.canWrite; });
+  }
+
+  // ---------- tabs / hash ----------
+  const VIEWS = ["today", "portfolio", "watchlist", "history", "requests"];
+  function show(v) {
+    if (!VIEWS.includes(v)) v = "today";
+    VIEWS.forEach((x) => { $("view-" + x).hidden = x !== v; $("tab-" + x).setAttribute("aria-selected", String(x === v)); });
+    if (location.hash.slice(1) !== v) { try { history.replaceState(null, "", "#" + v); } catch (e) { /* hash routing is optional */ } }
+  }
+  document.querySelectorAll("nav.tabs button").forEach((b) => b.addEventListener("click", () => { show(b.dataset.view); window.scrollTo(0, 0); }));
+  window.addEventListener("hashchange", () => show(location.hash.slice(1)));
+  show(location.hash.slice(1));
+
+  // ---------- forms ----------
+  $("w-kind").addEventListener("change", () => { $("w-symbol-wrap").hidden = $("w-kind").value === "sector"; });
+  $("watch-form").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const ok = await addWatch({ kind: $("w-kind").value, market: $("w-market").value, name: $("w-name").value, symbol: $("w-kind").value === "sector" ? null : $("w-symbol").value.trim() || null, reason: $("w-reason").value });
+    if (ok) { $("w-name").value = ""; $("w-symbol").value = ""; $("w-reason").value = ""; }
+  });
+  $("req-form").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const ok = await addRequest({ kind: $("r-kind").value, market: $("r-market").value, target: $("r-target").value, note: $("r-note").value });
+    if (ok) { $("r-target").value = ""; $("r-note").value = ""; }
+  });
+  $("h-cancel").addEventListener("click", () => { resetHoldingForm(); $("holding-adder").open = false; });
+  $("holding-form").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const qty = Number($("h-qty").value), avg = Number($("h-avg").value);
+    if (!isFinite(qty) || qty <= 0 || !isFinite(avg) || avg < 0) { toast("Enter a quantity above zero and a buy price."); return; }
+    const fields = { name: $("h-name").value.trim() || null, qty, avgPrice: avg, buyDate: $("h-date").value || null, thesis: $("h-thesis").value.trim() || null, updatedAt: nowIso(), updatedBy: "page" };
+    let ok;
+    if (S.editing) ok = await write(() => S.db.collection("holdings").doc(S.editing).update(fields), "Saved");
+    else {
+      const market = $("h-market").value, symbol = $("h-symbol").value.trim().toUpperCase();
+      if (!symbol) { toast("Enter the stock's symbol."); return; }
+      const id = market + "-" + safeId(symbol);
+      const existing = S.holdings.find((x) => x._id === id);
+      if (existing && existing.status !== "sold") { toast(symbol + " is already in holdings. Use Edit to change it."); return; }
+      ok = await write(() => S.db.collection("holdings").doc(id).set(Object.assign({ symbol, market, status: "open", lastPrice: null, lastPriceAt: null, openFlags: [], addedAt: nowIso() }, fields)), "Added " + symbol);
+      const w = watched(fields.name || symbol, symbol, market);
+      if (ok && w) write(() => S.db.collection("watchlist").doc(w._id).update({ status: "removed", removedAt: nowIso(), note: "Moved to holdings" }));
+    }
+    if (ok) { resetHoldingForm(); $("holding-adder").open = false; }
+  });
+  let qT;
+  $("hist-q").addEventListener("input", () => { clearTimeout(qT); qT = setTimeout(() => { S.histQ = $("hist-q").value; renderHistory(); }, 200); });
+
+  // ---------- boot ----------
+  renderAll();
+  fillMarketSelects();
+  const toRows = (snap) => snap.docs.map((d) => Object.assign({ _id: d.id }, d.data()));
+  function onErr(e) { if (e && e.code !== "revoked") toast("Live updates paused. Reload the page to reconnect."); }
+  async function boot() {
+    const use = window.claude && window.claude.use;
+    if (!use) { $("nodb").hidden = false; $("status").textContent = "Not connected"; return; }
+    const db = await use("db");
+    if (!db) { $("nodb").hidden = false; $("status").textContent = "Not connected"; return; }
+    S.db = db;
+    try {
+      S.user = await use("user");
+      if (S.user && S.user.can) { const c = await S.user.can("data.write"); if (c === false) S.canWrite = false; }
+    } catch (e) { /* treat as writable; a refused write says so */ }
+    db.doc("config/main").onSnapshot((d) => { S.config = d.exists ? d.data() : null; S.loaded.config = true; fillMarketSelects(); renderAll(); }, onErr);
+    db.collection("holdings").onSnapshot((s) => { S.holdings = toRows(s); S.loaded.holdings = true; renderAll(); }, onErr);
+    db.collection("watchlist").onSnapshot((s) => { S.watchlist = toRows(s); S.loaded.watchlist = true; renderAll(); }, onErr);
+    db.collection("requests").orderBy("createdAt", "desc").limit(100).onSnapshot((s) => { S.requests = toRows(s); S.loaded.requests = true; renderAll(); }, onErr);
+    db.collection("entries").orderBy("createdAt", "desc").limit(200).onSnapshot((s) => { S.entries = toRows(s); S.loaded.entries = true; renderAll(); }, onErr);
+    renderAll();
+  }
+  boot();
+})();
+</script>

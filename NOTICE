@@ -1,0 +1,18 @@
+Market Tracker
+Copyright 2026 Ishwari Garge
+
+This project is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Parts of the following skills are adapted from Anthropic's financial-services-plugins
+(https://github.com/anthropics/financial-services-plugins), licensed under the
+Apache License, Version 2.0:
+
+- morning-brief      adapted from equity-research/skills/morning-note and thesis-tracker
+- portfolio-watch    adapted from equity-research/skills/thesis-tracker
+- company-deep-dive  builds on equity-research/skills/sector-overview, catalyst-calendar,
+                     earnings-analysis and financial-analysis/skills/competitive-analysis
+- valuation-model    adapted from financial-analysis/skills/dcf-model and comps-analysis
+
+The adapted text was rewritten for individual investors and for India and US market
+profiles; it is not a verbatim copy. valuation-model/scripts/dcf.py is original to
+this project.

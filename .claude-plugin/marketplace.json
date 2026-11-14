@@ -1,0 +1,14 @@
+{
+  "name": "ishg-plugins",
+  "description": "Market Tracker: scheduled market briefs, portfolio checks and a watchlist dashboard, for India and the US.",
+  "owner": {
+    "name": "Ishwari Garge"
+  },
+  "plugins": [
+    {
+      "name": "market-tracker",
+      "source": "./plugins/market-tracker",
+      "description": "Morning and evening market briefs, portfolio red-flag checks, a watchlist you can change from a live dashboard, deep dives and valuations. India and US, configurable by market."
+    }
+  ]
+}

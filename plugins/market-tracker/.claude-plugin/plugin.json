@@ -1,0 +1,11 @@
+{
+  "name": "market-tracker",
+  "version": "0.1.0",
+  "description": "Morning and evening market briefs, portfolio red-flag checks, a watchlist you can change from a live dashboard, deep dives and valuations. India and US, configurable by market.",
+  "author": {
+    "name": "Ishwari Garge"
+  },
+  "repository": "https://github.com/ishg-153/market-tracker",
+  "license": "Apache-2.0",
+  "keywords": ["stocks", "india", "nse", "bse", "portfolio", "watchlist", "market-brief", "valuation"]
+}
